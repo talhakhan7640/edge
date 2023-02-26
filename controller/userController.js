@@ -1,85 +1,107 @@
-import User from '../models/userModel.js';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import userModel from "../models/userModels.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
-const saltRounds = 10;
+export const userRegistrationController = (request, response) => {
+  const saltRounds = 10;
+  const username = request.body.username;
+  const userEmail = request.body.email;
+  const userPassword = request.body.password;
 
-export const registerController = (request, response) => {
-  bcrypt.hash(request.body.password, saltRounds)
-  .then((hashedPassword) => {
-    const user = new User({
-      email: request.body.email,
-      password: hashedPassword
-    })
-	// save the new user
-		user.save()
-        // return success if the new user is added to the database successfully
-        .then((result) => {
-          response.status(201).send({
-            message: "User Created Successfully",
-            result,
+  userModel.findOne({ username: username }, function (err, document) {
+    if (document) {
+      if (userEmail == document.email) {
+        response.status(409).json({ message: 'Username and Email already exist!' })
+      } else {
+        return response.send({
+          message: "Username already exist",
+        });
+      }
+    } else {
+      userModel.findOne({ email: userEmail }, function (err, document) {
+        if (document) {
+          return response.send({
+            message: "Email already exist",
+          });
+        } else {
+          bcrypt
+            .hash(userPassword, saltRounds)
+            .then((hashedPassword) => {
+              const user = new userModel({
+                username: username,
+                email: userEmail,
+                password: hashedPassword,
+              });
+              
+              user
+                .save()
+                .then((result) => {
+                  response.status(201).send({
+                    message: "User has been created successfully!",
+                    result,
+                  });
+                })
+                .catch((error) => {
+                  response.status(500).send({
+                    message: "Something went wrong! User could not be created!",
+                    error,
+                  });
+                });
+            })
+            .catch((e) => {
+              response.status(500).send({
+                message:
+                  "Something went wrong! Password could be hashed successfully!",
+                e,
+              });
+            });
+        }
+      });
+    }
+  });
+};
+
+export const userLoginController = (request, response) => {
+  const username = request.body.username;
+  const email = request.body.email;
+  const password = request.body.password;
+
+  userModel
+    .findOne({ username: username })
+    .then((user) => {
+      bcrypt
+        .compare(password, user.password)
+        .then((passwordCheck) => {
+          if (!passwordCheck) {
+            return response.status(400).send({
+              message: "Wrong password",
+            });
+          }
+          const token = jwt.sign(
+            {
+              userId: user._id,
+              userEmail: user.email,
+            },
+            "RANDOM-TOKEN",
+            { expiresIn: "24h" }
+          );
+          response.status(200).send({
+            message: "Login successful",
+            email: user.email,
+            token,
           });
         })
-        // catch error if the new user wasn't added successfully to the database
         .catch((error) => {
-          response.status(500).send({
-            message: "Error creating user",
+          response.status(400).send({
+            message: "Wrong password!!",
             error,
           });
-        })
-				.catch((e) => {
-      response.status(500).send({
-        message: "Password was not hashed successfully",
-        e,
+        });
+    })
+    .catch((error) => {
+      response.status(404).send({
+        message: "User not found!",
+        error,
       });
     });
-	}); 
-}
-
-
-export const loginController = (request, response) => {
-	const email = request.body.email;
-	const password = request.body.password;
-	
-	User.findOne({ email: email })
-		.then((user) => {
-			bcrypt.compare(password, user.password)
-				.then((passwordCheck) => {
-
-					if(!passwordCheck) {
-						return response.status(400).send({
-							message: "Wrong password!!",
-							error
-						})
-					}
-	
-					// Creating a JWT Token
-					const token = jwt.sign(
-						{
-							userId: user._id,
-							userEmail: user.email
-						},
-						"RANDOM-TOKEN",	
-						{ expiresIn: "24h" }
-					)
-
-					response.status(200).send({
-						message: "Login successful",
-						email: user.email,
-						token,
-					});
-				})
-				.catch((error) => {
-					response.status(400).send({
-						message: "Wrong password!!",
-						error
-					})
-				})
-		})
-		.catch((e) => {
-			response.status(404).send({
-				message: "Email not found",
-				e,
-			})
-		})
-}
+};
